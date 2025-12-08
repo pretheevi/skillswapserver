@@ -16,7 +16,12 @@ const Server = http.createServer(app);
 connectDB();
 
 // middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://skillswap-aead1adi9-prethiveerajs-projects.vercel.app",
+    "https://skillswap-git-main-prethiveerajs-projects.vercel.app"
+  ]
+}));
 app.use(express.json());
 app.use((req, res, next) => {
   console.log(req.method, req.url);
@@ -27,6 +32,7 @@ app.use("/api", authentication);
 app.use("/api", skillRoutes);
 app.use('/api', comment)
 
-Server.listen(process.env.PORT, "0.0.0.0", () =>
+const PORT = process.env.PORT || 8080;
+Server.listen(PORT, "0.0.0.0", () =>
   console.log(`listening to PORT:${process.env.PORT}...`)
 );
