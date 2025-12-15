@@ -25,7 +25,8 @@ const allowedOrigins = [
   "https://skillswap-git-main-prethiveerajs-projects.vercel.app",
   "https://skillswap-zeta-seven.vercel.app",
   "http://localhost:5173",
-  "http://127.0.0.1:5173"
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174"
 ]
 const corsOptions = {
   origin: function(origin, callback) {
@@ -36,25 +37,20 @@ const corsOptions = {
   credentials: true
 };
 
-// Apply CORS to all routes (handles preflight automatically)
-app.use(cors(corsOptions));
-// Error handling for CORS
-//If a request is blocked, the Error("Not allowed by CORS") will throw. Consider logging it nicely:
-app.use((err, req, res, next) => {
-  if (err.message === "Not allowed by CORS") {
+// Middleware 
+app.use(cors(corsOptions)); // Apply CORS to all routes (handles preflight automatically
+app.use((err, req, res, next) => {  // Error handling for CORS
+  if (err.message === "Not allowed by CORS") { //If a request is blocked, the Error("Not allowed by CORS") will throw
     return res.status(403).json({ error: err.message });
   }
   next(err);
 });
-
-
-
-
 app.use(express.json());
-app.use((req, res, next) => {
+app.use((req, res, next) => { // just logging incomming client API request for debugging.
   console.log(req.method, req.url);
   next();
 });
+
 
 app.use("/api", authentication);
 app.use("/api", skillRoutes);
