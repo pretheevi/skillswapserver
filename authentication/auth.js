@@ -61,12 +61,12 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const exist = await UserModel.findByEmail(email);
-    if (exist) {
+    const exist = await UserModel.findByName(name);
+    if (exist && exist.email === email) {
       return res.status(400).json({ error: 'User already exists' });
     }
-
-    if(exist.name === name) {
+    console.log('aaa', exist)
+    if(exist && exist.name === name) {
       return res.status(400).json({error: 'Username all ready taken'});
     }
 

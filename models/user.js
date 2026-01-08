@@ -57,6 +57,16 @@ class UserModel {
     }
   }
 
+  static async findByName(name) {
+    try{
+      const db = await this.getDb();
+      const query = 'SELECT * FROM User WHERE name = ?';
+      return await db.get(query, [name]);
+    } catch(error){
+      throw error;
+    }
+  }
+
   static async findById(id) {
     try {
       const db = await this.getDb();
