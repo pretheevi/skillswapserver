@@ -61,15 +61,16 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const exist = await UserModel.findByName(name);
-    if (exist && exist.email === email) {
-      return res.status(400).json({ error: 'User already exists' });
+    const emailExist = await UserModel.findByEmail(email);
+    if (emailExist && emailExist.email === email) {
+      return res.status(400).json({ error: 'Email already signed up' });
     }
-    console.log('aaa', exist)
-    if(exist && exist.name === name) {
+    console.log('aaa', emailExist);
+    const nameExist = await UserModel.findByName(name);
+    if(nameExist && nameExist.name === name) {
       return res.status(400).json({error: 'Username all ready taken'});
     }
-
+    console.log('bbb', nameExist);
     // Hash password
     const bcrypt = require('bcrypt');
     const hashedPassword = await bcrypt.hash(password, 10);
