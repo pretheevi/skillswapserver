@@ -67,10 +67,8 @@ app.use((req, res, next) => {
   next();
 });
 
-console.log("Uploads path:", path.join(__dirname, "uploads"));
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-
+// console.log("Uploads path:", path.join(__dirname, "uploads"));
+// app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", authentication);
 app.use("/api", userRoutes);

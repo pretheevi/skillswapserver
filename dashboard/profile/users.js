@@ -3,7 +3,8 @@ const router = express.Router();
 const UserModel = require('../../models/user');
 const UserFollows = require('../../models/userFollows');
 const jwt = require('../../middleware/jwt');
-const {uploadProfilePic} = require('../../middleware/multer');
+const {uploadProfilePic} = require('../../middleware/upload');
+const cloudinary = require('../../config/cloudinary');
 
 // GET all users except the logged-in user (hide passwords)
 router.get('/profile', jwt.authMiddleware, async (req, res) => {
@@ -64,12 +65,6 @@ router.get('/users/search', jwt.authMiddleware, async (req, res) => {
   }
 });
 
-
-const path = require('path');
-const fs = require('fs');
-const { error } = require('console');
-const fsPromises = require('fs').promises;
-
 router.post('/profile', jwt.authMiddleware, uploadProfilePic.single('avatar'), async (req, res) => {
   try {
     const userId = req.user.id;
@@ -79,42 +74,44 @@ router.post('/profile', jwt.authMiddleware, uploadProfilePic.single('avatar'), a
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-
+    console.log('xxxxx',user);
     const updateData = {
       name: req.body.name || user.name,
       bio: req.body.bio || user.bio,
+      avatar: user.avatar || '', // Start with current avatar
+      avatar_public_id: user.avatar_public_id || '',
     };
-    
-    // 2. Handle avatar upload if file exists
+
+    // Handle avatar changes
     if (req.file) {
-      // Delete old avatar if exists
-      if (user.avatar && user.avatar !== '') {
+      // New file uploaded - remove old one if exists
+      if (user.avatar_public_id) {
         try {
-          // Extract filename from the URL/path
-          const avatarFilename = path.basename(user.avatar);
-          const oldAvatarPath = path.join(process.cwd(), 'uploads', 'profiles', avatarFilename);
-          
-          console.log('Attempting to delete old avatar:', oldAvatarPath);
-          
-          // Check if file exists and delete
-          if (fs.existsSync(oldAvatarPath)) {
-            await fsPromises.unlink(oldAvatarPath);
-            console.log('Successfully deleted old avatar');
-          } else {
-            console.log('Old avatar file not found at path:', oldAvatarPath);
-          }
-        } catch (deleteError) {
-          console.error('Error deleting old avatar:', deleteError);
-          // Don't stop the update if deletion fails
+          const result = await cloudinary.uploader.destroy(user.avatar_public_id, { resource_type: 'image' });
+          console.log('Cloudinary destroy result:', result); 
+        } catch (cloudErr) {
+          console.log('cloudinary delete failed', cloudErr);
         }
       }
-
-      // Set new avatar path (relative URL for frontend)
-      updateData.avatar = `/uploads/profiles/${req.file.filename}`;
-    } else {
-      // Keep existing avatar if no new file uploaded
-      updateData.avatar = user.avatar;
+      updateData.avatar = req.file.path;
+      updateData.avatar_public_id = req.file.filename;
+    } 
+    // Check if user wants to remove avatar
+    else if (req.body.remove_avatar === 'true' || req.body.avatar === '') {
+      // Remove existing avatar if it exists
+      if (user.avatar_public_id) {
+        try {
+          const result = await cloudinary.uploader.destroy(user.avatar_public_id, { resource_type: 'image' });
+          console.log('Cloudinary destroy result (removing avatar):', result); 
+        } catch (cloudErr) {
+          console.log('cloudinary delete failed', cloudErr);
+        }
+      }
+      // Set empty values for avatar
+      updateData.avatar = '';
+      updateData.avatar_public_id = '';
     }
+    // If no file and no remove request, keep existing avatar (already set above)
 
     // 3. Update user in database
     await UserModel.update(userId, updateData);
@@ -129,7 +126,7 @@ router.post('/profile', jwt.authMiddleware, uploadProfilePic.single('avatar'), a
         id: updatedUser.id,
         name: updatedUser.name,
         bio: updatedUser.bio,
-        avatar: updatedUser.avatar
+        avatar: updatedUser.avatar || ''
       }
     });
 
@@ -139,9 +136,9 @@ router.post('/profile', jwt.authMiddleware, uploadProfilePic.single('avatar'), a
     // Clean up uploaded file if there was an error
     if (req.file) {
       try {
-        const filePath = path.join(process.cwd(), 'uploads', 'profiles', req.file.filename);
-        if (fs.existsSync(filePath)) {
-          await fsPromises.unlink(filePath);
+        // If using Cloudinary, destroy the uploaded file
+        if (req.file.filename) {
+          await cloudinary.uploader.destroy(req.file.filename, { resource_type: 'image' });
         }
       } catch (cleanupError) {
         console.error('Error cleaning up uploaded file:', cleanupError);
@@ -162,13 +159,6 @@ router.delete('/profile/avatar', jwt.authMiddleware, async (req, res) => {
 
     if (!user.avatar) {
       return res.status(400).json({ error: 'No avatar to delete' });
-    }
-
-    // 1. delete file
-    const filePath = path.join(process.cwd(), user.avatar);
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
     }
 
     // 2. update DB

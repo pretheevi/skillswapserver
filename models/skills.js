@@ -224,50 +224,50 @@ class SkillsModel {
     }
   }
 
-  static async updateSkillById(id, updateData) {
-    try {
-      const db = await this.getDb();
+static async updateSkillById(id, updateData) {
+  try {
+    const db = await this.getDb();
+    
+    // Update skill details
+    const query = `
+      UPDATE Skill
+      SET title = ?, category = ?, level = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+    const { title, category, level, description } = updateData;
+    const result = await db.run(query, [title, category, level, description, id]);
+
+    // Update media only if provided
+    if (updateData.media) {
+      const { media_type, media_url, public_id } = updateData.media;
       
-      // Update skill details
-      const query = `
-        UPDATE Skill
-        SET title = ?, category = ?, level = ?, description = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
-      const { title, category, level, description } = updateData;
-      const result = await db.run(query, [title, category, level, description, id]);
-
-      // Update media only if provided
-      if (updateData.media && updateData.media.media_type && updateData.media.media_url) {
-        const { media_type, media_url } = updateData.media;
-        
-        // Check if media already exists for this skill
-        const checkMediaQuery = `SELECT id FROM SkillMedia WHERE skill_id = ?`;
-        const existingMedia = await db.get(checkMediaQuery, [id]);
-        
-        if (existingMedia) {
-          // Update existing media
-          const mediaUpdateQuery = `
-            UPDATE SkillMedia 
-            SET media_type = ?, media_url = ?
-            WHERE skill_id = ?
-          `;
-          await db.run(mediaUpdateQuery, [media_type, media_url, id]);
-        } else {
-          // Insert new media
-          const mediaInsertQuery = `
-            INSERT INTO SkillMedia (skill_id, media_type, media_url)
-            VALUES (?, ?, ?)
-          `;
-          await db.run(mediaInsertQuery, [id, media_type, media_url]);
-        }
+      // Check if media already exists for this skill
+      const checkMediaQuery = `SELECT id FROM SkillMedia WHERE skill_id = ?`;
+      const existingMedia = await db.get(checkMediaQuery, [id]);
+      
+      if (existingMedia) {
+        // Update existing media
+        const mediaUpdateQuery = `
+          UPDATE SkillMedia 
+          SET media_type = ?, media_url = ?, public_id = ?
+          WHERE skill_id = ?
+        `;
+        await db.run(mediaUpdateQuery, [media_type || null, media_url || null, public_id || null, id]);
+      } else if (media_type && media_url) {
+        // Insert new media only if we have actual media data
+        const mediaInsertQuery = `
+          INSERT INTO SkillMedia (skill_id, media_type, media_url, public_id)
+          VALUES (?, ?, ?, ?)
+        `;
+        await db.run(mediaInsertQuery, [id, media_type, media_url, public_id || null]);
       }
-
-      return result;
-    } catch (error) {
-      throw error;
     }
+
+    return result;
+  } catch (error) {
+    throw error;
   }
+}
   
   static async deleteSkillById(id) {
     try {

@@ -16,6 +16,7 @@ class UserModel {
           email TEXT NOT NULL UNIQUE,
           password TEXT NOT NULL,
           avatar TEXT DEFAULT '',
+          avatar_public_id TEXT,
           bio TEXT DEFAULT '',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -59,7 +60,7 @@ class UserModel {
   static async findById(id) {
     try {
       const db = await this.getDb();
-      const query = `SELECT name, email, avatar, bio FROM User WHERE id = ?`;
+      const query = `SELECT * FROM User WHERE id = ?`;
       return await db.get(query, [id]);
     } catch (error) {
       console.error("Error finding user by id:", error);
@@ -82,6 +83,11 @@ class UserModel {
       if (userData.avatar !== undefined) {
         fields.push('avatar = ?');
         values.push(userData.avatar);
+      }
+
+      if (userData.avatar_public_id !== undefined) {
+        fields.push('avatar_public_id = ?');
+        values.push(userData.avatar_public_id);
       }
 
       if (userData.bio !== undefined) {

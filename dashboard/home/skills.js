@@ -4,11 +4,8 @@ const SkillsModel = require("../../models/skills");
 const SkillMediaModel = require("../../models/skillMedia");
 const jwt = require("../../middleware/jwt");
 const validateSkills = require("../../middleware/validateSkills");
-const {uploadPostMedia} = require("../../middleware/multer");
-const path = require('path');
-const fs = require('fs');
-const fsPromise = require('fs').promises;
-
+const {uploadPostMedia} = require("../../middleware/upload");
+const cloudinary = require('../../config/cloudinary');
 
 router.post("/skills", jwt.authMiddleware, uploadPostMedia.single("media"), validateSkills.create, async (req, res) => {
   try {
@@ -35,7 +32,8 @@ router.post("/skills", jwt.authMiddleware, uploadPostMedia.single("media"), vali
       await SkillMediaModel.createMedia({
         skill_id: skillId,
         media_type: mediaType,
-        media_url: `/uploads/posts/${req.file.filename}`,
+        media_url: req.file.path, // cloudinary URL.
+        public_id: req.file.filename // cloudinary public_id
       });
     }
 
@@ -100,19 +98,79 @@ router.put("/skills/:id", jwt.authMiddleware, uploadPostMedia.single('media'), v
       description: req.body.description,
     };
 
+    // Check if there's existing media for this skill
+    const existingMedia = await SkillMediaModel.getMediaBySkillId(req.params.id);
+    
     // Only update media if a new file is uploaded
     if (req.file) {
       const mediaType = req.file.mimetype.startsWith('image') ? 'image' : 'video';
       
+      // Delete old file from Cloudinary if it exists
+      if (existingMedia && existingMedia.public_id) {
+        try {
+          const result = await cloudinary.uploader.destroy(existingMedia.public_id, { resource_type: 'image' });
+          console.log('Cloudinary destroy result (old file):', result); 
+        } catch (cloudErr) {
+          console.log('Cloudinary delete failed for old file:', cloudErr);
+        }
+      }
+      
+      // Update skill data with new media
       updateData.media = {
         media_type: mediaType,
-        media_url: `/uploads/posts/${req.file.filename}`,
+        media_url: req.file.path, // Cloudinary URL from uploadPostMedia middleware
+        public_id: req.file.filename // Cloudinary public_id from uploadPostMedia middleware
+      };
+      
+      // Update or create media record
+      if (existingMedia) {
+        await SkillMediaModel.updateMediaBySkillId(req.params.id, {
+          media_type: mediaType,
+          media_url: req.file.path,
+          public_id: req.file.filename
+        });
+      } else {
+        await SkillMediaModel.createMedia({
+          skill_id: req.params.id,
+          media_type: mediaType,
+          media_url: req.file.path,
+          public_id: req.file.filename
+        });
       }
     }
+    
+    // If no new file but we need to update other fields
+    if (!req.file) {
+      // Keep existing media data
+      updateData.media = {
+        media_type: existingMedia?.media_type || null,
+        media_url: existingMedia?.media_url || null,
+        public_id: existingMedia?.public_id || null
+      };
+    }
 
+    // Update skill information
     await SkillsModel.updateSkillById(req.params.id, updateData);
-    res.json({ message: "Skill updated successfully" });
+    
+    // Get updated skill with media
+    const updatedSkill = await SkillsModel.getSkillWithCommentsAndMediaBySkillId(req.params.id);
+    
+    res.json({ 
+      message: "Skill updated successfully",
+      skill: updatedSkill
+    });
   } catch (error) {
+    console.error('Error updating skill:', error);
+    
+    // Clean up uploaded file if there was an error
+    if (req.file && req.file.filename) {
+      try {
+        await cloudinary.uploader.destroy(req.file.filename, { resource_type: 'image' });
+      } catch (cleanupError) {
+        console.error('Error cleaning up uploaded file:', cleanupError);
+      }
+    }
+    
     res.status(500).json({ error: error.message });
   }
 });
@@ -138,52 +196,15 @@ router.delete("/skills/:id", jwt.authMiddleware, async (req, res) => {
     }
 
     // 4. Delete associated media file if it exists
-    try {
-      const media = await SkillMediaModel.getMediaBySkillId(skill_id);
-      
-      // Check if media exists and has a valid URL
-      if (media && media.media_url) {
-        // Extract filename from URL (handles different URL formats)
-        const mediaUrl = media.media_url;
-        let skillImageFilename;
-        
-        // Handle both absolute and relative paths
-        if (mediaUrl.startsWith('/uploads/')) {
-          skillImageFilename = path.basename(mediaUrl);
-        } else if (mediaUrl.startsWith('http')) {
-          // If it's a full URL, extract just the filename
-          const urlObj = new URL(mediaUrl);
-          skillImageFilename = path.basename(urlObj.pathname);
-        } else {
-          // Assume it's just a filename
-          skillImageFilename = mediaUrl;
-        }
-        
-        // Construct the correct file path
-        const skillImagePath = path.join(process.cwd(), 'uploads', 'posts', skillImageFilename);
-        
-        console.log('Attempting to delete skill image:', skillImagePath);
-        
-        if (fs.existsSync(skillImagePath)) {
-          await fsPromise.unlink(skillImagePath);
-          console.log('Successfully deleted skill image file');
-        } else {
-          console.log('Skill image file not found at path:', skillImagePath);
-          
-          // Optional: Try alternative path (without leading slash)
-          const altPath = path.join(process.cwd(), 'uploads', 'posts', mediaUrl);
-          if (fs.existsSync(altPath)) {
-            await fsPromise.unlink(altPath);
-            console.log('Successfully deleted using alternative path');
-          }
-        }
-      } else {
-        console.log('No media file associated with this skill');
+    const media = await SkillMediaModel.getMediaBySkillId(skill_id);
+
+    if(media?.public_id) {
+      try{
+        const result = await cloudinary.uploader.destroy(media.public_id, { resource_type: 'image' });
+        console.log('Cloudinary destroy result:', result); 
+      } catch(cloudErr) {
+        console.log('cloudinary delete failed', error); 
       }
-    } catch(deleteError) {
-      console.error('Error deleting skill image:', deleteError);
-      // Don't fail the whole operation if file deletion fails
-      // Continue with deleting the database record
     }
 
     // 5. Delete skill from database
